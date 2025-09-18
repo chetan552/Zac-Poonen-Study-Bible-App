@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="study_bible_app"
+        android:label="Zac Study Bible"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity
