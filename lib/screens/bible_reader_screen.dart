@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/bible_provider.dart';
 import '../providers/database_provider.dart';
@@ -99,6 +100,84 @@ class _BibleReaderScreenState extends ConsumerState<BibleReaderScreen> {
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeInOut,
     );
+  }
+
+  void _navigateToPreviousChapter() {
+    final booksAsync = ref.read(booksProvider);
+    final selectedBook = ref.read(selectedBookProvider);
+    final selectedChapter = ref.read(selectedChapterProvider);
+
+    if (selectedBook == null || selectedChapter == null) return;
+
+    booksAsync.whenData((books) {
+      final currentBookIndex = books.indexWhere((book) => book.name == selectedBook);
+      if (currentBookIndex == -1) return;
+
+      if (selectedChapter > 1) {
+        // Go to previous chapter in same book
+        ref.read(selectedChapterProvider.notifier).state = selectedChapter - 1;
+        ref.read(selectedVerseProvider.notifier).state = 1;
+        setState(() {
+          _selectedVerse = 1;
+          _expandedVerse = null;
+        });
+        // Scroll to top
+        _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      } else if (currentBookIndex > 0) {
+        // Go to last chapter of previous book
+        final previousBook = books[currentBookIndex - 1];
+        ref.read(selectedBookProvider.notifier).state = previousBook.name;
+        ref.read(selectedChapterProvider.notifier).state = previousBook.chaptersCount;
+        ref.read(selectedVerseProvider.notifier).state = 1;
+        setState(() {
+          _selectedVerse = 1;
+          _expandedVerse = null;
+        });
+        // Scroll to top
+        _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      }
+      // If we're at the first chapter of the first book, do nothing
+    });
+  }
+
+  void _navigateToNextChapter() {
+    final booksAsync = ref.read(booksProvider);
+    final selectedBook = ref.read(selectedBookProvider);
+    final selectedChapter = ref.read(selectedChapterProvider);
+
+    if (selectedBook == null || selectedChapter == null) return;
+
+    booksAsync.whenData((books) {
+      final currentBookIndex = books.indexWhere((book) => book.name == selectedBook);
+      if (currentBookIndex == -1) return;
+
+      final currentBook = books[currentBookIndex];
+
+      if (selectedChapter < currentBook.chaptersCount) {
+        // Go to next chapter in same book
+        ref.read(selectedChapterProvider.notifier).state = selectedChapter + 1;
+        ref.read(selectedVerseProvider.notifier).state = 1;
+        setState(() {
+          _selectedVerse = 1;
+          _expandedVerse = null;
+        });
+        // Scroll to top
+        _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      } else if (currentBookIndex < books.length - 1) {
+        // Go to first chapter of next book
+        final nextBook = books[currentBookIndex + 1];
+        ref.read(selectedBookProvider.notifier).state = nextBook.name;
+        ref.read(selectedChapterProvider.notifier).state = 1;
+        ref.read(selectedVerseProvider.notifier).state = 1;
+        setState(() {
+          _selectedVerse = 1;
+          _expandedVerse = null;
+        });
+        // Scroll to top
+        _scrollController.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      }
+      // If we're at the last chapter of the last book, do nothing
+    });
   }
 
   @override
@@ -325,6 +404,18 @@ class _BibleReaderScreenState extends ConsumerState<BibleReaderScreen> {
           Expanded(
             child: GestureDetector(
               onTap: isFullScreen ? () => ref.read(isFullScreenProvider.notifier).state = false : null,
+              onHorizontalDragEnd: (details) {
+                // Detect swipe direction
+                if (details.primaryVelocity != null) {
+                  if (details.primaryVelocity! > 0) {
+                    // Swipe right - go to previous chapter
+                    _navigateToPreviousChapter();
+                  } else if (details.primaryVelocity! < 0) {
+                    // Swipe left - go to next chapter
+                    _navigateToNextChapter();
+                  }
+                }
+              },
               child: versesAsync.when(
                 data: (verses) => ListView.builder(
                   controller: _scrollController,
@@ -657,6 +748,11 @@ class _BibleReaderScreenState extends ConsumerState<BibleReaderScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
+              leading: const Icon(Icons.copy),
+              title: const Text('Copy Verse'),
+              onTap: () => _copyVerse(context, verse),
+            ),
+            ListTile(
               leading: const Icon(Icons.bookmark_add),
               title: const Text('Bookmark'),
               onTap: () => _addBookmark(context, verse),
@@ -758,5 +854,15 @@ class _BibleReaderScreenState extends ConsumerState<BibleReaderScreen> {
         ],
       ),
     );
+  }
+
+  void _copyVerse(BuildContext context, dynamic verse) {
+    Navigator.of(context).pop();
+    final verseText = '${verse.book} ${verse.chapter}:${verse.verse} - ${verse.text}';
+    Clipboard.setData(ClipboardData(text: verseText)).then((_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Verse copied to clipboard')),
+      );
+    });
   }
 }
